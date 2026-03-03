@@ -1,0 +1,57 @@
+Metadata-Version: 2.1
+Name: pyvitals
+Version: 0.4.1
+Summary: Python tools for rdlevels
+Home-page: https://github.com/huantianad/py-vitals
+Author: huantian
+Author-email: davidtianli@gmail.com
+License: UNKNOWN
+Project-URL: Bug Tracker, https://github.com/huantianad/py-vitals/issues
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx
+Requires-Dist: python-rapidjson
+
+# py-vitals
+
+Python tools for rdlevels, adds a few helpful functions for downloading and parsing levels.
+
+# Installation
+
+Just run `pip install pyvitals`!\
+You can also run `pip install git+https://github.com/huantianad/pyvitals` to install the latest bleeding edge version
+from the GitHub repo directly.
+
+# Examples
+
+```python
+import os
+
+import pyvitals
+
+# Get the list of levels from the rdlevels API
+data = pyvitals.get_sheet_data()
+
+# Only get verified levels
+data = pyvitals.get_sheet_data(verified_only=True)
+
+# Download the first level in the list to the current directory, unzipping it in the process
+path = pyvitals.download_level(data[0]['download_url'], './', unzip=True)
+
+# Parse the rdlevel from the recently download level
+level_data = pyvitals.parse_level(os.path.join(path, 'main.rdlevel'))
+
+# Parse a rdzip's main.rdlevel directly
+level_data = pyvitals.parse_rdzip(data[0]['download_url'])
+```
+
+## Documentation
+There's no documentation yet :(, but I'll probably get to it eventually.
+For now, you can check out the docstrings.
+
+
