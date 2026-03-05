@@ -6,6 +6,7 @@ import psutil
 import numpy as np
 import math
 import random
+import speedtest
 
 # ---------------- CONFIG & INITIALIZATION ----------------
 mp_hands = mp.solutions.hands
@@ -69,6 +70,21 @@ def calculate_final_bpm(buffer):
     if len(idx) > 0:
         return int(freqs[idx[np.argmax(fft_data[idx])]] * 60)
     return 72
+
+def get_internet_speed():
+    st = speedtest.Speedtest()
+
+    download_speed = st.download() / 1_000_000
+    upload_speed = st.upload() / 1_000_000
+    ping = st.results.ping
+    return round(download_speed,2), round(upload_speed,2), round(ping,2)
+
+    download,upload, ping = get_internet_speed()
+
+
+print(f"Download: {download} Mbps")
+print(f"Upload: {upload} Mbps")
+print(f"Ping: {ping} ms")
 
 # ---------------- MAIN LOOP ----------------
 print("⚡ MATRIX FULL SYSTEM v5.5 - TARGET LOCKED EDITION ACTIVE (CAMERA 1)")
