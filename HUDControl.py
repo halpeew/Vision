@@ -6,7 +6,9 @@ import psutil
 import numpy as np
 import math
 import random
-import speedtest
+import requests
+import subprocess
+
 
 # ---------------- CONFIG & INITIALIZATION ----------------
 mp_hands = mp.solutions.hands
@@ -15,8 +17,7 @@ hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7
 face_detection = mp_face.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 draw = mp.solutions.drawing_utils
 
-# Kamera Girişi (Bire çekildi)
-cap = cv2.VideoCapture(0) 
+cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
@@ -32,14 +33,16 @@ last_button_press = 0
 
 sys_dash_active = False
 hum_dash_active = False
+internet_panel_active = False
 
-# --- SCANNING & BIOMETRIC VARIABLES ---
+download, upload, ping = 0, 0, 0
+
 scan_start_time = 0
-scan_duration = 5.0 
+scan_duration = 5.0
 locked_bpm = 0
 is_calibrated = False
 bpm_buffer = []
-buffer_size = 150 
+buffer_size = 150
 
 # ---------------- HELPER FUNCTIONS ----------------
 def is_spiderman(hand):
@@ -71,22 +74,26 @@ def calculate_final_bpm(buffer):
         return int(freqs[idx[np.argmax(fft_data[idx])]] * 60)
     return 72
 
-def get_internet_speed():
-    st = speedtest.Speedtest()
-
-    download_speed = st.download() / 1_000_000
-    upload_speed = st.upload() / 1_000_000
-    ping = st.results.ping
-    return round(download_speed,2), round(upload_speed,2), round(ping,2)
-
-    download,upload, ping = get_internet_speed()
-
-
-print(f"Download: {download} Mbps")
-print(f"Upload: {upload} Mbps")
-print(f"Ping: {ping} ms")
-
-# ---------------- MAIN LOOP ----------------
+# ---------------- FAST.COM INTERNET SPEED ----------------
+def get_speedtest_cli():
+    """
+    Terminal üzerinden speedtest-cli çalıştırır ve global download, upload, ping değerlerini günceller.
+    Eğer CLI çalışmazsa hepsi 0.0 olarak kalır.
+    """
+    global download, upload, ping
+    try:
+        # subprocess ile CLI çalıştırıyoruz, 15 saniye timeout
+        result = subprocess.run(["speedtest", "--simple"], capture_output=True, text=True, timeout=15)
+        lines = result.stdout.splitlines()
+        if len(lines) >= 3:
+            ping = float(lines[0].split()[1])
+            download = float(lines[1].split()[1])
+            upload = float(lines[2].split()[1])
+        else:
+            download, upload, ping = 0.0, 0.0, 0.0
+    except Exception as e:
+        print("Speedtest CLI failed:", e)
+        download, upload, ping = 0.0, 0.0, 0.0
 print("⚡ MATRIX FULL SYSTEM v5.5 - TARGET LOCKED EDITION ACTIVE (CAMERA 1)")
 
 while cap.isOpened():
@@ -95,7 +102,7 @@ while cap.isOpened():
     img = cv2.flip(img, 1)
     h, w, _ = img.shape
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    
+
     hand_results = hands.process(rgb)
     face_results = face_detection.process(rgb)
     now = time.time()
@@ -103,6 +110,7 @@ while cap.isOpened():
     # --- BUTTON COORDINATES ---
     sys_btn_pos = (30, h//2 - 70)
     hum_btn_pos = (30, h//2 + 10)
+    speed_btn_pos = (30, h//2 + 90)
     btn_w, btn_h = 280, 60
 
     # --- HUMAN VITALS SCANNING ---
@@ -126,7 +134,6 @@ while cap.isOpened():
             display_bpm = f"{locked_bpm + random.uniform(-0.5, 0.5):.1f}"
             panel_color = (0, 0, 255)
 
-        # Panel UI
         overlay = img.copy()
         cv2.rectangle(overlay, (w-400, 50), (w-50, 350), (20, 0, 0), -1)
         cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
@@ -136,6 +143,17 @@ while cap.isOpened():
         if not is_calibrated:
             prog = int((time_elapsed / scan_duration) * 300)
             cv2.rectangle(img, (w-370, 300), (w-370+prog, 315), (0, 255, 0), -1)
+
+    # --- INTERNET SPEED PANEL ---
+    if internet_panel_active:
+        overlay = img.copy()
+        cv2.rectangle(overlay, (w-400, 400), (w-50, 600), (0, 20, 0), -1)
+        cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+        cv2.rectangle(img, (w-400, 400), (w-50, 600), (0, 255, 255), 2)
+        cv2.putText(img, "INTERNET SPEED", (w-380, 430), 0, 0.8, (0, 255, 255), 2)
+        cv2.putText(img, f"Download: {download:.2f} Mbps", (w-380, 480), 0, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Upload: {upload:.2f} Mbps", (w-380, 520), 0, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ping: {ping:.2f} ms", (w-380, 560), 0, 0.7, (255, 255, 255), 2)
 
     # --- SYSTEM VITALS DASHBOARD ---
     if sys_dash_active:
@@ -156,16 +174,21 @@ while cap.isOpened():
         for hand_lms in hand_results.multi_hand_landmarks:
             idx = hand_lms.landmark[8]
             cx, cy = int(idx.x * w), int(idx.y * h)
-            
-            # Button Interaction
+
             pinch = get_dynamic_pinch(hand_lms) > 0.8
             if now - last_button_press > 1.0:
                 if sys_btn_pos[0] < cx < sys_btn_pos[0]+btn_w and sys_btn_pos[1] < cy < sys_btn_pos[1]+btn_h:
                     if pinch: sys_dash_active = not sys_dash_active; last_button_press = now
                 if hum_btn_pos[0] < cx < hum_btn_pos[0]+btn_w and hum_btn_pos[1] < cy < hum_btn_pos[1]+btn_h:
-                    if pinch: 
+                    if pinch:
                         hum_dash_active = not hum_dash_active
                         scan_start_time = now; bpm_buffer = []; is_calibrated = False; last_button_press = now
+                if speed_btn_pos[0] < cx < speed_btn_pos[0]+btn_w and speed_btn_pos[1] < cy < speed_btn_pos[1]+btn_h:
+                    if pinch:
+                        internet_panel_active = not internet_panel_active
+                        if internet_panel_active:
+                            get_fast_download_speed()
+                        last_button_press = now
 
             # Volume & Alt-Tab Logic
             if is_fist(hand_lms) and not alt_pressed:
@@ -180,7 +203,7 @@ while cap.isOpened():
             if alt_pressed and not is_spiderman(hand_lms):
                 if hand_lms.landmark[8].x < 0.4 and (now - last_tab_time > 0.5):
                     pyautogui.press('tab'); last_tab_time = now
-            
+
             draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
     # --- UI BUTTONS RENDER ---
@@ -188,6 +211,8 @@ while cap.isOpened():
     cv2.putText(img, "SYSTEM VITALS", (sys_btn_pos[0]+20, sys_btn_pos[1]+40), 0, 0.7, (255, 255, 0), 2)
     cv2.rectangle(img, hum_btn_pos, (hum_btn_pos[0]+btn_w, hum_btn_pos[1]+btn_h), (0, 0, 255), 1)
     cv2.putText(img, "HUMAN VITALS", (hum_btn_pos[0]+20, hum_btn_pos[1]+40), 0, 0.7, (0, 0, 255), 2)
+    cv2.rectangle(img, speed_btn_pos, (speed_btn_pos[0]+btn_w, speed_btn_pos[1]+btn_h), (0, 255, 255), 1)
+    cv2.putText(img, "INTERNET SPEED", (speed_btn_pos[0]+20, speed_btn_pos[1]+40), 0, 0.7, (0, 255, 255), 2)
 
     cv2.imshow("Final Matrix HUD v5.5", img)
     if cv2.waitKey(1) & 0xFF == ord("q"): break
