@@ -6,6 +6,8 @@ Interactable HUD Project with Python
 - Hand tracking with OpenCV and control buttons in the HUD
 - Check your BPM with the "HumanVitals" button (uses PyVitals)
 - Check system status with the "PcVitals" button (uses time & psutil)
+- Check your internet connection and speed per unit time.
+  
 
 ## Usage 
 1. Open terminal and navigate to the project folder
